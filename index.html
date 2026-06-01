@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#C4704B">
+<link rel="manifest" href="manifest.json">
+<title>账单识别</title>
+<style>
+:root {
+  --bg: #FAF6F0;
+  --surface: #FFFFFF;
+  --primary: #C4704B;
+  --primary-hover: #B5623E;
+  --primary-light: #F3E2D8;
+  --text: #2D2926;
+  --text-sec: #8C8580;
+  --border: #E8E2DA;
+  --danger: #D94F4F;
+  --success: #4A9D6E;
+  --radius: 14px;
+  --shadow: 0 2px 12px rgba(45,41,38,.07);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.screen { display:none; min-height:100dvh; padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom)); }
+.screen.active { display:flex; flex-direction:column; }
+
+/* Header */
+.header { display:flex; align-items:center; gap:12px; margin-bottom:24px; min-height:44px; }
+.header h1 { font-size:22px; font-weight:700; letter-spacing:-.3px; flex:1; }
+.icon-btn {
+  width:42px; height:42px; border-radius:50%; border:none; background:var(--surface);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  box-shadow: var(--shadow); transition: transform .15s;
+}
+.icon-btn:active { transform:scale(.92); }
+.icon-btn svg { width:20px; height:20px; color:var(--text); }
+.back-btn { background:none; box-shadow:none; }
+
+/* App cards grid */
+.app-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1; align-content:start; }
+.app-card {
+  background: var(--surface); border-radius: var(--radius); padding:24px 16px;
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  box-shadow: var(--shadow); cursor:pointer; transition: transform .15s, box-shadow .15s;
+  border: 2px solid transparent; position:relative;
+}
+.app-card:active { transform:scale(.96); }
+.app-card .card-icon {
+  width:52px; height:52px; border-radius:14px; display:flex;
+  align-items:center; justify-content:center;
+}
+.app-card .card-icon svg { width:30px; height:30px; }
+.app-card .card-name { font-size:15px; font-weight:600; text-align:center; }
+.app-card .badge {
+  position:absolute; top:10px; right:10px; background:var(--primary);
+  color:white; font-size:11px; font-weight:700; width:22px; height:22px;
+  border-radius:50%; display:flex; align-items:center; justify-content:center;
+}
+
+/* Bottom bar */
+.bottom-bar {
+  display:flex; gap:10px; margin-top:24px;
+  padding-bottom: var(--safe-bottom);
+}
+.bottom-bar .bar-btn {
+  flex:1; display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:14px; border-radius:var(--radius); border:none; font-size:15px;
+  font-weight:600; cursor:pointer; transition: transform .15s;
+}
+.bottom-bar .bar-btn:active { transform:scale(.96); }
+.btn-results { background:var(--primary); color:white; }
+.btn-settings { background:var(--surface); color:var(--text); box-shadow:var(--shadow); }
+.btn-results svg, .btn-settings svg { width:18px; height:18px; }
+
+/* Processing screen */
+.app-title { font-size:15px; color:var(--text-sec); font-weight:500; margin-bottom:4px; }
+.upload-zone {
+  border:2px dashed var(--border); border-radius:var(--radius); padding:40px 20px;
+  display:flex; flex-direction:column; align-items:center; gap:12px; cursor:pointer;
+  transition: border-color .2s, background .2s; margin-bottom:16px;
+}
+.upload-zone:active, .upload-zone.has-files { border-color:var(--primary); background:var(--primary-light); }
+.upload-zone svg { width:36px; height:36px; color:var(--text-sec); }
+.upload-zone p { color:var(--text-sec); font-size:14px; }
+.upload-zone .file-count { font-size:18px; font-weight:700; color:var(--primary); }
+input[type="file"] { display:none; }
+
+.btn-primary {
+  width:100%; padding:16px; border:none; border-radius:var(--radius);
+  background:var(--primary); color:white; font-size:16px; font-weight:600;
+  cursor:pointer; transition: background .2s, transform .15s;
+}
+.btn-primary:active { transform:scale(.97); background:var(--primary-hover); }
+.btn-primary:disabled { opacity:.4; pointer-events:none; }
+
+.btn-outline {
+  width:100%; padding:14px; border:2px solid var(--border); border-radius:var(--radius);
+  background:var(--surface); color:var(--text); font-size:15px; font-weight:600;
+  cursor:pointer; margin-top:10px; transition: transform .15s;
+}
+.btn-outline:active { transform:scale(.97); }
+
+/* Progress */
+.progress-area { margin:16px 0; }
+.progress-bar {
+  height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:8px;
+}
+.progress-fill { height:100%; background:var(--primary); border-radius:3px; transition:width .3s; width:0; }
+.progress-text { font-size:13px; color:var(--text-sec); }
+
+/* Results area */
+.result-box {
+  background:var(--surface); border-radius:var(--radius); padding:16px;
+  margin-top:16px; box-shadow:var(--shadow); max-height:40vh; overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.result-box pre {
+  font-family: "SF Mono", "Menlo", monospace; font-size:12px; line-height:1.6;
+  white-space:pre; overflow-x:auto; color:var(--text);
+}
+.result-label { font-size:13px; color:var(--text-sec); font-weight:500; margin-top:16px; margin-bottom:6px; }
+.btn-row { display:flex; gap:10px; margin-top:12px; }
+.btn-row .btn-primary, .btn-row .btn-outline { flex:1; }
+
+/* Settings screen */
+.setting-group { margin-bottom:24px; }
+.setting-group label {
+  display:block; font-size:13px; color:var(--text-sec); font-weight:500;
+  margin-bottom:6px;
+}
+.setting-group input, .setting-group select {
+  width:100%; padding:14px; border:2px solid var(--border); border-radius:12px;
+  font-size:15px; background:var(--surface); color:var(--text);
+  outline:none; transition: border-color .2s;
+}
+.setting-group input:focus, .setting-group select:focus { border-color:var(--primary); }
+.hint { font-size:12px; color:var(--text-sec); margin-top:6px; line-height:1.5; }
+
+/* Results screen */
+.result-entry {
+  background:var(--surface); border-radius:var(--radius); padding:14px 16px;
+  margin-bottom:10px; box-shadow:var(--shadow);
+}
+.result-entry-header {
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+}
+.result-entry-title { font-size:15px; font-weight:600; }
+.result-entry-count { font-size:13px; color:var(--text-sec); }
+.result-entry pre {
+  font-family:"SF Mono","Menlo",monospace; font-size:11px; line-height:1.5;
+  white-space:pre; overflow-x:auto; color:var(--text); max-height:120px; overflow-y:auto;
+}
+.delete-btn {
+  background:none; border:none; cursor:pointer; padding:4px;
+}
+.delete-btn svg { width:18px; height:18px; color:var(--danger); }
+.empty-state {
+  text-align:center; padding:60px 20px; color:var(--text-sec);
+}
+.empty-state svg { width:48px; height:48px; margin-bottom:12px; opacity:.4; }
+.empty-state p { font-size:15px; }
+
+/* Toast */
+.toast {
+  position:fixed; bottom:100px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--text); color:white; padding:12px 24px; border-radius:30px;
+  font-size:14px; font-weight:500; opacity:0; transition: all .3s; pointer-events:none;
+  z-index:100; white-space:nowrap;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* Supabase info card */
+.info-card {
+  background:var(--primary-light); border-radius:var(--radius); padding:14px 16px;
+  margin-bottom:16px; font-size:13px; line-height:1.6; color:var(--primary-hover);
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME SCREEN ============ -->
+<div id="screen-home" class="screen active">
+  <div class="header">
+    <h1>账单识别</h1>
+  </div>
+  <div class="app-grid">
+    <div class="app-card" onclick="openApp('wechat')">
+      <div class="card-icon" style="background:#F0FAF0">
+        <svg viewBox="0 0 40 40" fill="none"><path d="M20 4C11.16 4 4 10.3 4 18c0 4.4 2.5 8.3 6.4 10.8L9 34l5.8-3.2c1.6.5 3.4.8 5.2.8 8.84 0 16-6.3 16-14S28.84 4 20 4z" fill="#07C160"/><ellipse cx="14" cy="17" rx="2" ry="2" fill="white"/><ellipse cx="26" cy="17" rx="2" ry="2" fill="white"/></svg>
+      </div>
+      <span class="card-name">微信账单</span>
+      <span class="badge" id="badge-wechat" style="display:none">0</span>
+    </div>
+    <div class="app-card" onclick="openApp('alipay')">
+      <div class="card-icon" style="background:#E8F2FF">
+        <svg viewBox="0 0 40 40" fill="none"><rect x="4" y="8" width="32" height="24" rx="4" fill="#1677FF"/><path d="M12 20h16M20 14v12" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
+      </div>
+      <span class="card-name">支付宝账单</span>
+      <span class="badge" id="badge-alipay" style="display:none">0</span>
+    </div>
+    <div class="app-card" onclick="openApp('boc')">
+      <div class="card-icon" style="background:#FFF0F0">
+        <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="14" fill="#DE1421"/><path d="M14 16h12v2H14zm0 4h12v2H14zm0 4h8v2h-8z" fill="white"/></svg>
+      </div>
+      <span class="card-name">中国银行</span>
+      <span class="badge" id="badge-boc" style="display:none">0</span>
+    </div>
+    <div class="app-card" onclick="openApp('abc')">
+      <div class="card-icon" style="background:#F0FAF0">
+        <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="14" fill="#009B4D"/><path d="M15 24c2-6 4-10 5-11s3 5 5 11" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M13 26h14" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <span class="card-name">农业银行</span>
+      <span class="badge" id="badge-abc" style="display:none">0</span>
+    </div>
+  </div>
+  <div class="bottom-bar">
+    <button class="bar-btn btn-results" onclick="openResults()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>
+      汇总导出
+    </button>
+    <button class="bar-btn btn-settings" onclick="openSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 008.92 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 8.92a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09c-.658.003-1.25.396-1.51 1z"/></svg>
+      设置
+    </button>
+  </div>
+</div>
+
+<!-- ============ APP PROCESSING SCREEN ============ -->
+<div id="screen-app" class="screen">
+  <div class="header">
+    <button class="icon-btn back-btn" onclick="goHome()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1 id="app-screen-title">微信账单</h1>
+  </div>
+
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+    <p>点击选择截图</p>
+    <p class="file-count" id="file-count" style="display:none">已选 0 张</p>
+  </div>
+  <input type="file" id="file-input" accept="image/*" multiple>
+
+  <button class="btn-primary" id="btn-process" onclick="processImages()" disabled>开始识别</button>
+
+  <div class="progress-area" id="progress-area" style="display:none">
+    <p class="progress-text" id="progress-text">正在识别...</p>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  </div>
+
+  <div id="result-area" style="display:none">
+    <p class="result-label">识别结果：</p>
+    <div class="result-box"><pre id="result-pre"></pre></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn-primary" onclick="saveCurrentResult()">保存结果</button>
+    </div>
+    <button class="btn-outline" onclick="clearAndRetry()">清除，重新选图</button>
+  </div>
+</div>
+
+<!-- ============ RESULTS SCREEN ============ -->
+<div id="screen-results" class="screen">
+  <div class="header">
+    <button class="icon-btn back-btn" onclick="goHome()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1>汇总导出</h1>
+    <button class="icon-btn" onclick="clearAllResults()" title="清空全部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#D94F4F" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+    </button>
+  </div>
+
+  <div id="results-list"></div>
+
+  <div id="results-empty" class="empty-state" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+    <p>暂无识别结果</p>
+  </div>
+
+  <div id="results-actions" style="margin-top:auto; padding-top:16px;">
+    <div class="info-card" id="supabase-hint" style="display:none">
+      请在设置中配置 Supabase 信息后使用"发送到电脑"功能
+    </div>
+    <button class="btn-primary" id="btn-send-pc" onclick="sendToPC()">
+      发送到电脑
+    </button>
+    <button class="btn-outline" onclick="downloadMerged()">
+      下载文件
+    </button>
+    <button class="btn-outline" onclick="copyMerged()">
+      复制到剪贴板
+    </button>
+  </div>
+</div>
+
+<!-- ============ SETTINGS SCREEN ============ -->
+<div id="screen-settings" class="screen">
+  <div class="header">
+    <button class="icon-btn back-btn" onclick="goHome()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1>设置</h1>
+  </div>
+
+  <div class="setting-group">
+    <label>API 地址</label>
+    <input id="s-api-url" placeholder="https://api.siliconflow.cn/v1">
+    <p class="hint">硅基流动默认地址已填写，如使用其他服务商请修改</p>
+  </div>
+  <div class="setting-group">
+    <label>API Key</label>
+    <input id="s-api-key" type="password" placeholder="sk-...">
+  </div>
+  <div class="setting-group">
+    <label>模型名称</label>
+    <input id="s-model" placeholder="Qwen/Qwen2-VL-7B-Instruct">
+    <p class="hint">需要支持图片识别的模型。硅基流动推荐：Qwen/Qwen2-VL-7B-Instruct</p>
+  </div>
+
+  <div style="height:1px;background:var(--border);margin:28px 0"></div>
+
+  <div class="setting-group">
+    <label>Supabase URL</label>
+    <input id="s-supa-url" placeholder="https://xxxxx.supabase.co">
+  </div>
+  <div class="setting-group">
+    <label>Supabase Anon Key</label>
+    <input id="s-supa-key" type="password" placeholder="eyJ...">
+  </div>
+  <div class="setting-group">
+    <p class="hint">在 Supabase 中创建表：<br><code style="font-size:12px;background:var(--border);padding:2px 6px;border-radius:4px">create table ocr_results (id bigint generated always as identity primary key, content text not null, created_at timestamptz default now());</code><br><br>并在 Table Editor 中开启 RLS，添加 policy 允许 anon 角色的 INSERT 和 SELECT。</p>
+  </div>
+
+  <button class="btn-primary" onclick="saveSettings()">保存设置</button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ CONFIG ============
+const APP_CONFIGS = {
+  wechat: {
+    name: '微信账单',
+    prompt: `分析这张微信账单截图。
+1. 判断这是"入账"还是"支出"（通过页面标题或上下文判断）
+2. 提取每个类别及其金额
+
+要求：
+- 金额四舍五入到整数
+- 只输出JSON，不要任何其他文字、不要markdown代码块标记
+- 格式：{"type":"支出","items":[{"category":"餐饮","amount":510}]}`,
+    format(data) {
+      const prefix = data.type === '入账' ? '微信入账' : '微信支出';
+      const sign = data.type === '入账' ? '' : '-';
+      return data.items.map(i =>
+        `${prefix}\t${i.category}\t${sign}${Math.abs(Math.round(i.amount))}`
+      ).join('\n');
+    }
+  },
+  alipay: {
+    name: '支付宝账单',
+    prompt: `分析这张支付宝账单截图。
+1. 判断这是"入账"还是"支出"
+2. 提取每个类别及其金额（忽略百分比和笔数信息）
+
+要求：
+- 金额四舍五入到整数
+- 只输出JSON，不要任何其他文字、不要markdown代码块标记
+- 格式：{"type":"支出","items":[{"category":"充值缴费","amount":200}]}`,
+    format(data) {
+      const prefix = data.type === '入账' ? '支付宝入账' : '支付宝支出';
+      const sign = data.type === '入账' ? '' : '-';
+      return data.items.map(i =>
+        `${prefix}\t${i.category}\t${sign}${Math.abs(Math.round(i.amount))}`
+      ).join('\n');
+    }
+  },
+  boc: {
+    name: '中国银行',
+    prompt: `分析这张中国银行交易明细截图。提取每条记录的：类别、交易方、金额。
+
+要求：
+- 金额四舍五入到整数，保留正负号（支出为负数，收入为正数）
+- 按类别排序（相同类别的放在一起）
+- 只输出JSON，不要任何其他文字、不要markdown代码块标记
+- 格式：{"items":[{"category":"转账支出","counterparty":"张三","amount":-234}]}`,
+    format(data) {
+      return data.items.map(i =>
+        `中国银行\t${i.category}\t${Math.round(i.amount)}\t${i.counterparty}`
+      ).join('\n');
+    }
+  },
+  abc: {
+    name: '农业银行',
+    prompt: `分析这张农业银行交易明细截图。提取每条记录的：类别（即交易描述/摘要）、金额。
+
+过滤规则：排除以下开头的所有项目：
+- "微信支付"开头
+- "支付宝"开头
+- "财付通（微信支"开头
+
+要求：
+- 金额四舍五入到整数，保留正负号
+- 按类别排序
+- 类别截图中显示不全的，按截图显示输出即可
+- 只输出JSON，不要任何其他文字、不要markdown代码块标记
+- 如果过滤后没有剩余项目，输出 {"items":[]}
+- 格式：{"items":[{"category":"转支","amount":-7000}]}`,
+    format(data) {
+      return data.items.map(i =>
+        `农业银行\t${i.category}\t${Math.round(i.amount)}`
+      ).join('\n');
+    }
+  }
+};
+
+// ============ STATE ============
+let currentApp = null;
+let selectedFiles = [];
+let currentResult = '';
+let allResults = {}; // { wechat: 'tsv...', alipay: 'tsv...' }
+
+// ============ NAVIGATION ============
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+function goHome() {
+  showScreen('home');
+  updateBadges();
+}
+
+function openApp(appId) {
+  if (!getSettings().apiKey) {
+    toast('请先在设置中填写 API Key');
+    openSettings();
+    return;
+  }
+  currentApp = appId;
+  const config = APP_CONFIGS[appId];
+  document.getElementById('app-screen-title').textContent = config.name;
+  // Reset
+  selectedFiles = [];
+  currentResult = '';
+  document.getElementById('file-count').style.display = 'none';
+  document.getElementById('upload-zone').querySelector('p').textContent = '点击选择截图';
+  document.getElementById('upload-zone').classList.remove('has-files');
+  document.getElementById('btn-process').disabled = true;
+  document.getElementById('progress-area').style.display = 'none';
+  document.getElementById('result-area').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  showScreen('app');
+}
+
+function openResults() {
+  renderResultsList();
+  showScreen('results');
+}
+
+function openSettings() {
+  const s = getSettings();
+  document.getElementById('s-api-url').value = s.apiUrl;
+  document.getElementById('s-api-key').value = s.apiKey;
+  document.getElementById('s-model').value = s.model;
+  document.getElementById('s-supa-url').value = s.supaUrl;
+  document.getElementById('s-supa-key').value = s.supaKey;
+  showScreen('settings');
+}
+
+// ============ SETTINGS ============
+function getSettings() {
+  return {
+    apiUrl: localStorage.getItem('ocr_apiUrl') || 'https://api.siliconflow.cn/v1',
+    apiKey: localStorage.getItem('ocr_apiKey') || '',
+    model: localStorage.getItem('ocr_model') || 'Qwen/Qwen2-VL-7B-Instruct',
+    supaUrl: localStorage.getItem('ocr_supaUrl') || '',
+    supaKey: localStorage.getItem('ocr_supaKey') || ''
+  };
+}
+
+function saveSettings() {
+  localStorage.setItem('ocr_apiUrl', document.getElementById('s-api-url').value.trim());
+  localStorage.setItem('ocr_apiKey', document.getElementById('s-api-key').value.trim());
+  localStorage.setItem('ocr_model', document.getElementById('s-model').value.trim());
+  localStorage.setItem('ocr_supaUrl', document.getElementById('s-supa-url').value.trim());
+  localStorage.setItem('ocr_supaKey', document.getElementById('s-supa-key').value.trim());
+  toast('设置已保存');
+  goHome();
+}
+
+// ============ FILE HANDLING ============
+document.getElementById('file-input').addEventListener('change', function(e) {
+  selectedFiles = Array.from(e.target.files);
+  if (selectedFiles.length > 0) {
+    document.getElementById('file-count').textContent = `已选 ${selectedFiles.length} 张`;
+    document.getElementById('file-count').style.display = 'block';
+    document.getElementById('upload-zone').querySelector('p').style.display = 'none';
+    document.getElementById('upload-zone').classList.add('has-files');
+    document.getElementById('btn-process').disabled = false;
+  }
+});
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// ============ API CALL ============
+async function callVisionAPI(base64, prompt) {
+  const s = getSettings();
+  const url = s.apiUrl.replace(/\/+$/, '') + '/chat/completions';
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${s.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: s.model,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+          { type: 'text', text: prompt }
+        ]
+      }],
+      temperature: 0,
+      max_tokens: 2000
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`API错误 (${resp.status}): ${err}`);
+  }
+
+  const data = await resp.json();
+  const text = data.choices[0].message.content;
+  // Clean and parse JSON
+  const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
+  return JSON.parse(cleaned);
+}
+
+// ============ PROCESS IMAGES ============
+async function processImages() {
+  const config = APP_CONFIGS[currentApp];
+  const progressArea = document.getElementById('progress-area');
+  const progressText = document.getElementById('progress-text');
+  const progressFill = document.getElementById('progress-fill');
+  const resultArea = document.getElementById('result-area');
+
+  document.getElementById('btn-process').disabled = true;
+  progressArea.style.display = 'block';
+  resultArea.style.display = 'none';
+  let allRows = [];
+
+  for (let i = 0; i < selectedFiles.length; i++) {
+    progressText.textContent = `正在识别第 ${i + 1}/${selectedFiles.length} 张...`;
+    progressFill.style.width = `${((i) / selectedFiles.length) * 100}%`;
+
+    try {
+      const base64 = await fileToBase64(selectedFiles[i]);
+      const json = await callVisionAPI(base64, config.prompt);
+      const rows = config.format(json);
+      if (rows) allRows.push(rows);
+    } catch (err) {
+      allRows.push(`# 第${i + 1}张识别失败: ${err.message}`);
+    }
+  }
+
+  progressFill.style.width = '100%';
+  progressText.textContent = '识别完成';
+
+  currentResult = allRows.join('\n');
+  document.getElementById('result-pre').textContent = currentResult;
+  resultArea.style.display = 'block';
+}
+
+// ============ SAVE / MANAGE RESULTS ============
+function saveCurrentResult() {
+  if (!currentResult || currentResult.startsWith('#')) {
+    toast('没有有效结果可保存');
+    return;
+  }
+  // Append to existing results for this app
+  const existing = allResults[currentApp] || '';
+  allResults[currentApp] = existing ? existing + '\n' + currentResult : currentResult;
+  sessionStorage.setItem('ocr_results', JSON.stringify(allResults));
+  updateBadges();
+  toast('已保存到汇总');
+  goHome();
+}
+
+function loadResults() {
+  try {
+    const saved = sessionStorage.getItem('ocr_results');
+    if (saved) allResults = JSON.parse(saved);
+  } catch(e) {}
+}
+
+function updateBadges() {
+  for (const appId of Object.keys(APP_CONFIGS)) {
+    const badge = document.getElementById(`badge-${appId}`);
+    const data = allResults[appId];
+    if (data) {
+      const count = data.split('\n').filter(l => l && !l.startsWith('#')).length;
+      badge.textContent = count;
+      badge.style.display = count > 0 ? 'flex' : 'none';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function renderResultsList() {
+  const list = document.getElementById('results-list');
+  const empty = document.getElementById('results-empty');
+  const actions = document.getElementById('results-actions');
+  const hint = document.getElementById('supabase-hint');
+  const s = getSettings();
+
+  list.innerHTML = '';
+  const keys = Object.keys(allResults).filter(k => allResults[k]);
+
+  if (keys.length === 0) {
+    empty.style.display = 'block';
+    actions.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  actions.style.display = 'block';
+  hint.style.display = (!s.supaUrl || !s.supaKey) ? 'block' : 'none';
+  document.getElementById('btn-send-pc').disabled = (!s.supaUrl || !s.supaKey);
+
+  for (const appId of keys) {
+    const config = APP_CONFIGS[appId];
+    const rows = allResults[appId].split('\n').filter(l => l && !l.startsWith('#'));
+    const entry = document.createElement('div');
+    entry.className = 'result-entry';
+    entry.innerHTML = `
+      <div class="result-entry-header">
+        <span class="result-entry-title">${config.name}</span>
+        <span class="result-entry-count">${rows.length} 条</span>
+        <button class="delete-btn" onclick="deleteResult('${appId}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <pre>${allResults[appId]}</pre>
+    `;
+    list.appendChild(entry);
+  }
+}
+
+function deleteResult(appId) {
+  delete allResults[appId];
+  sessionStorage.setItem('ocr_results', JSON.stringify(allResults));
+  renderResultsList();
+  updateBadges();
+  toast('已删除');
+}
+
+function clearAllResults() {
+  if (!confirm('确定清空所有结果？')) return;
+  allResults = {};
+  sessionStorage.removeItem('ocr_results');
+  renderResultsList();
+  updateBadges();
+  toast('已清空');
+}
+
+function clearAndRetry() {
+  selectedFiles = [];
+  currentResult = '';
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-count').style.display = 'none';
+  document.getElementById('upload-zone').querySelector('p').style.display = 'block';
+  document.getElementById('upload-zone').querySelector('p').textContent = '点击选择截图';
+  document.getElementById('upload-zone').classList.remove('has-files');
+  document.getElementById('btn-process').disabled = true;
+  document.getElementById('progress-area').style.display = 'none';
+  document.getElementById('result-area').style.display = 'none';
+}
+
+// ============ EXPORT ============
+function getMergedContent() {
+  const header = '来源\t类别\t金额\t交易方';
+  const order = ['wechat', 'alipay', 'boc', 'abc'];
+  const parts = order
+    .filter(k => allResults[k])
+    .map(k => allResults[k]);
+  if (parts.length === 0) return '';
+  return header + '\n' + parts.join('\n');
+}
+
+function downloadMerged() {
+  const content = getMergedContent();
+  if (!content) { toast('没有可导出的结果'); return; }
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const d = new Date();
+  a.download = `账单_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('已下载');
+}
+
+async function copyMerged() {
+  const content = getMergedContent();
+  if (!content) { toast('没有可复制的结果'); return; }
+  try {
+    await navigator.clipboard.writeText(content);
+    toast('已复制到剪贴板');
+  } catch {
+    toast('复制失败，请长按文本手动复制');
+  }
+}
+
+async function sendToPC() {
+  const content = getMergedContent();
+  if (!content) { toast('没有可发送的结果'); return; }
+  const s = getSettings();
+  if (!s.supaUrl || !s.supaKey) { toast('请先配置 Supabase'); return; }
+
+  document.getElementById('btn-send-pc').disabled = true;
+  document.getElementById('btn-send-pc').textContent = '发送中...';
+
+  try {
+    const resp = await fetch(`${s.supaUrl}/rest/v1/ocr_results`, {
+      method: 'POST',
+      headers: {
+        'apikey': s.supaKey,
+        'Authorization': `Bearer ${s.supaKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({ content })
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    toast('已发送，请在电脑端查收');
+  } catch (err) {
+    toast('发送失败: ' + err.message);
+  } finally {
+    document.getElementById('btn-send-pc').disabled = false;
+    document.getElementById('btn-send-pc').textContent = '发送到电脑';
+  }
+}
+
+// ============ TOAST ============
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ============ INIT ============
+loadResults();
+updateBadges();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

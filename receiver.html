@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>账单接收</title>
+<style>
+:root {
+  --bg: #FAF6F0;
+  --surface: #FFFFFF;
+  --primary: #C4704B;
+  --primary-hover: #B5623E;
+  --primary-light: #F3E2D8;
+  --text: #2D2926;
+  --text-sec: #8C8580;
+  --border: #E8E2DA;
+  --success: #4A9D6E;
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  background: var(--bg); color: var(--text);
+  display: flex; justify-content: center; padding: 40px 20px;
+  min-height: 100vh;
+}
+.container { max-width: 800px; width: 100%; }
+.header { display:flex; align-items:center; gap:16px; margin-bottom:32px; }
+.header svg { width:36px; height:36px; color:var(--primary); }
+.header h1 { font-size:24px; font-weight:700; letter-spacing:-.5px; }
+
+.config-card {
+  background:var(--surface); border-radius:var(--radius); padding:24px;
+  box-shadow:0 2px 12px rgba(45,41,38,.07); margin-bottom:20px;
+}
+.config-card h2 { font-size:16px; font-weight:600; margin-bottom:16px; }
+.field { margin-bottom:14px; }
+.field label { display:block; font-size:13px; color:var(--text-sec); margin-bottom:4px; }
+.field input {
+  width:100%; padding:10px 14px; border:2px solid var(--border); border-radius:8px;
+  font-size:14px; background:var(--surface); color:var(--text); outline:none;
+  transition: border-color .2s;
+}
+.field input:focus { border-color:var(--primary); }
+.btn-row { display:flex; gap:10px; }
+.btn {
+  padding:10px 24px; border:none; border-radius:8px; font-size:14px; font-weight:600;
+  cursor:pointer; transition: background .2s, transform .1s;
+}
+.btn:active { transform:scale(.97); }
+.btn-primary { background:var(--primary); color:white; }
+.btn-primary:hover { background:var(--primary-hover); }
+.btn-outline { background:var(--surface); color:var(--text); border:2px solid var(--border); }
+.btn-outline:hover { border-color:var(--primary); }
+
+.result-card {
+  background:var(--surface); border-radius:var(--radius); padding:24px;
+  box-shadow:0 2px 12px rgba(45,41,38,.07); margin-top:20px;
+}
+.result-meta {
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
+}
+.result-meta .time { font-size:13px; color:var(--text-sec); }
+.result-table-wrap { overflow-x:auto; }
+table {
+  width:100%; border-collapse:collapse; font-size:14px;
+}
+th {
+  text-align:left; padding:10px 12px; background:var(--primary-light); color:var(--primary-hover);
+  font-weight:600; font-size:13px; white-space:nowrap;
+}
+td {
+  padding:8px 12px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tr:hover td { background:#FDFAF7; }
+.amount-pos { color:var(--success); font-weight:600; }
+.amount-neg { color:#D94F4F; font-weight:600; }
+
+.status {
+  text-align:center; padding:40px 20px; color:var(--text-sec); font-size:15px;
+}
+.status svg { width:40px; height:40px; margin-bottom:12px; opacity:.4; display:block; margin:0 auto 12px; }
+
+.toast {
+  position:fixed; bottom:40px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--text); color:white; padding:10px 24px; border-radius:24px;
+  font-size:14px; opacity:0; transition:all .3s; pointer-events:none; z-index:99;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.hint { font-size:12px; color:var(--text-sec); margin-top:8px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <path d="M14 2v6h6M16 13H8M16 17H8"/>
+    </svg>
+    <h1>账单接收</h1>
+  </div>
+
+  <div class="config-card" id="config-section">
+    <h2>Supabase 连接</h2>
+    <div class="field">
+      <label>Supabase URL</label>
+      <input id="c-url" placeholder="https://xxxxx.supabase.co">
+    </div>
+    <div class="field">
+      <label>Supabase Anon Key</label>
+      <input id="c-key" type="password" placeholder="eyJ...">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveAndFetch()">连接并获取</button>
+      <button class="btn btn-outline" onclick="toggleConfig()">收起</button>
+    </div>
+    <p class="hint">填写与手机端相同的 Supabase 信息</p>
+  </div>
+
+  <div class="btn-row" id="action-bar" style="display:none">
+    <button class="btn btn-primary" onclick="fetchLatest()">刷新</button>
+    <button class="btn btn-outline" onclick="copyContent()">复制</button>
+    <button class="btn btn-outline" onclick="downloadContent()">下载 TXT</button>
+    <button class="btn btn-outline" onclick="toggleConfig()">设置</button>
+  </div>
+
+  <div id="result-area"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let currentContent = '';
+
+function init() {
+  const url = localStorage.getItem('recv_supaUrl') || '';
+  const key = localStorage.getItem('recv_supaKey') || '';
+  document.getElementById('c-url').value = url;
+  document.getElementById('c-key').value = key;
+  if (url && key) {
+    document.getElementById('config-section').style.display = 'none';
+    document.getElementById('action-bar').style.display = 'flex';
+    fetchLatest();
+  }
+}
+
+function toggleConfig() {
+  const el = document.getElementById('config-section');
+  const bar = document.getElementById('action-bar');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    bar.style.display = 'none';
+  } else {
+    el.style.display = 'none';
+    bar.style.display = 'flex';
+  }
+}
+
+function saveAndFetch() {
+  const url = document.getElementById('c-url').value.trim();
+  const key = document.getElementById('c-key').value.trim();
+  if (!url || !key) { toast('请填写完整信息'); return; }
+  localStorage.setItem('recv_supaUrl', url);
+  localStorage.setItem('recv_supaKey', key);
+  document.getElementById('config-section').style.display = 'none';
+  document.getElementById('action-bar').style.display = 'flex';
+  fetchLatest();
+}
+
+async function fetchLatest() {
+  const url = localStorage.getItem('recv_supaUrl');
+  const key = localStorage.getItem('recv_supaKey');
+  const area = document.getElementById('result-area');
+
+  area.innerHTML = '<div class="status"><p>加载中...</p></div>';
+
+  try {
+    const resp = await fetch(
+      `${url}/rest/v1/ocr_results?order=created_at.desc&limit=1`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (!data.length) {
+      area.innerHTML = `<div class="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <p>暂无数据，请在手机端发送</p>
+      </div>`;
+      return;
+    }
+
+    currentContent = data[0].content;
+    const time = new Date(data[0].created_at).toLocaleString('zh-CN');
+    renderTable(currentContent, time);
+    toast('已获取最新数据');
+  } catch (err) {
+    area.innerHTML = `<div class="status"><p>获取失败: ${err.message}</p></div>`;
+  }
+}
+
+function renderTable(tsv, time) {
+  const lines = tsv.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return;
+
+  const headers = lines[0].split('\t');
+  const rows = lines.slice(1).map(l => l.split('\t'));
+
+  let html = `<div class="result-card">
+    <div class="result-meta">
+      <span style="font-weight:600">${rows.length} 条记录</span>
+      <span class="time">${time}</span>
+    </div>
+    <div class="result-table-wrap"><table><thead><tr>`;
+
+  headers.forEach(h => html += `<th>${h}</th>`);
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(cols => {
+    html += '<tr>';
+    cols.forEach((c, i) => {
+      // Find the 金额 column (index 2 based on header)
+      const isAmount = headers[i] === '金额';
+      if (isAmount) {
+        const num = parseInt(c);
+        const cls = num >= 0 ? 'amount-pos' : 'amount-neg';
+        html += `<td class="${cls}">${c}</td>`;
+      } else {
+        html += `<td>${c}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div></div>';
+  document.getElementById('result-area').innerHTML = html;
+}
+
+async function copyContent() {
+  if (!currentContent) { toast('没有数据'); return; }
+  try {
+    await navigator.clipboard.writeText(currentContent);
+    toast('已复制到剪贴板');
+  } catch { toast('复制失败'); }
+}
+
+function downloadContent() {
+  if (!currentContent) { toast('没有数据'); return; }
+  const blob = new Blob(['\uFEFF' + currentContent], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `账单_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('已下载');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+init();
+</script>
+</body>
+</html>
