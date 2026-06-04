@@ -291,8 +291,8 @@ input[type="file"] { display:none; }
   </div>
 
   <div id="results-actions" style="margin-top:auto; padding-top:16px;">
-    <div class="info-card" id="supabase-hint" style="display:none">
-      请在设置中配置 Supabase 信息后使用"发送到电脑"功能
+    <div class="info-card" id="gist-hint" style="display:none">
+      请在设置中配置 GitHub Token 和 Gist ID 后使用"发送到电脑"功能
     </div>
     <button class="btn-primary" id="btn-send-pc" onclick="sendToPC()">
       发送到电脑
@@ -333,15 +333,14 @@ input[type="file"] { display:none; }
   <div style="height:1px;background:var(--border);margin:28px 0"></div>
 
   <div class="setting-group">
-    <label>Supabase URL</label>
-    <input id="s-supa-url" placeholder="https://xxxxx.supabase.co">
+    <label>GitHub Personal Access Token</label>
+    <input id="s-gh-token" type="password" placeholder="ghp_...">
+    <p class="hint">在 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) 中创建，勾选 gist 权限即可</p>
   </div>
   <div class="setting-group">
-    <label>Supabase Anon Key</label>
-    <input id="s-supa-key" type="password" placeholder="eyJ...">
-  </div>
-  <div class="setting-group">
-    <p class="hint">在 Supabase 中创建表：<br><code style="font-size:12px;background:var(--border);padding:2px 6px;border-radius:4px">create table ocr_results (id bigint generated always as identity primary key, content text not null, created_at timestamptz default now());</code><br><br>并在 Table Editor 中开启 RLS，添加 policy 允许 anon 角色的 INSERT 和 SELECT。</p>
+    <label>Gist ID</label>
+    <input id="s-gist-id" placeholder="如 a1b2c3d4e5f6...">
+    <p class="hint">在 gist.github.com 创建一个 Gist（内容随意），创建后浏览器地址栏最后一段即为 Gist ID</p>
   </div>
 
   <button class="btn-primary" onclick="saveSettings()">保存设置</button>
@@ -477,8 +476,8 @@ function openSettings() {
   document.getElementById('s-api-url').value = s.apiUrl;
   document.getElementById('s-api-key').value = s.apiKey;
   document.getElementById('s-model').value = s.model;
-  document.getElementById('s-supa-url').value = s.supaUrl;
-  document.getElementById('s-supa-key').value = s.supaKey;
+  document.getElementById('s-gh-token').value = s.ghToken;
+  document.getElementById('s-gist-id').value = s.gistId;
   showScreen('settings');
 }
 
@@ -489,7 +488,9 @@ function getSettings() {
     apiKey: localStorage.getItem('ocr_apiKey') || '',
     model: localStorage.getItem('ocr_model') || 'Qwen/Qwen2-VL-7B-Instruct',
     supaUrl: localStorage.getItem('ocr_supaUrl') || '',
-    supaKey: localStorage.getItem('ocr_supaKey') || ''
+    supaKey: localStorage.getItem('ocr_supaKey') || '',
+    ghToken: localStorage.getItem('ocr_ghToken') || '',
+    gistId: localStorage.getItem('ocr_gistId') || ''
   };
 }
 
@@ -497,8 +498,10 @@ function saveSettings() {
   localStorage.setItem('ocr_apiUrl', document.getElementById('s-api-url').value.trim());
   localStorage.setItem('ocr_apiKey', document.getElementById('s-api-key').value.trim());
   localStorage.setItem('ocr_model', document.getElementById('s-model').value.trim());
-  localStorage.setItem('ocr_supaUrl', document.getElementById('s-supa-url').value.trim());
-  localStorage.setItem('ocr_supaKey', document.getElementById('s-supa-key').value.trim());
+  localStorage.setItem('ocr_supaUrl', '');
+  localStorage.setItem('ocr_supaKey', '');
+  localStorage.setItem('ocr_ghToken', document.getElementById('s-gh-token').value.trim());
+  localStorage.setItem('ocr_gistId', document.getElementById('s-gist-id').value.trim());
   toast('设置已保存');
   goHome();
 }
@@ -636,7 +639,7 @@ function renderResultsList() {
   const list = document.getElementById('results-list');
   const empty = document.getElementById('results-empty');
   const actions = document.getElementById('results-actions');
-  const hint = document.getElementById('supabase-hint');
+  const hint = document.getElementById('gist-hint');
   const s = getSettings();
 
   list.innerHTML = '';
@@ -650,8 +653,8 @@ function renderResultsList() {
 
   empty.style.display = 'none';
   actions.style.display = 'block';
-  hint.style.display = (!s.supaUrl || !s.supaKey) ? 'block' : 'none';
-  document.getElementById('btn-send-pc').disabled = (!s.supaUrl || !s.supaKey);
+  hint.style.display = (!s.ghToken || !s.gistId) ? 'block' : 'none';
+  document.getElementById('btn-send-pc').disabled = (!s.ghToken || !s.gistId);
 
   for (const appId of keys) {
     const config = APP_CONFIGS[appId];
@@ -742,24 +745,27 @@ async function sendToPC() {
   const content = getMergedContent();
   if (!content) { toast('没有可发送的结果'); return; }
   const s = getSettings();
-  if (!s.supaUrl || !s.supaKey) { toast('请先配置 Supabase'); return; }
+  if (!s.ghToken || !s.gistId) { toast('请先配置 GitHub Token 和 Gist ID'); return; }
 
   document.getElementById('btn-send-pc').disabled = true;
   document.getElementById('btn-send-pc').textContent = '发送中...';
 
   try {
-    const resp = await fetch(`${s.supaUrl}/rest/v1/ocr_results`, {
-      method: 'POST',
+    const resp = await fetch(`https://api.github.com/gists/${s.gistId}`, {
+      method: 'PATCH',
       headers: {
-        'apikey': s.supaKey,
-        'Authorization': `Bearer ${s.supaKey}`,
+        'Authorization': `Bearer ${s.ghToken}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
+        'Accept': 'application/vnd.github+json'
       },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({
+        files: {
+          'bill_result.tsv': { content }
+        }
+      })
     });
-    if (!resp.ok) throw new Error(await resp.text());
-    toast('已发送，请在电脑端查收');
+    if (!resp.ok) throw new Error(`GitHub API 错误 (${resp.status})`);
+    toast('已发送，请在电脑端刷新查收');
   } catch (err) {
     toast('发送失败: ' + err.message);
   } finally {
