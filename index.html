@@ -317,31 +317,40 @@ input[type="file"] { display:none; }
   </div>
 
   <div class="setting-group">
-    <label>API 地址</label>
-    <input id="s-api-url" placeholder="https://api.siliconflow.cn/v1">
-    <p class="hint">硅基流动默认地址已填写，如使用其他服务商请修改</p>
-  </div>
-  <div class="setting-group">
-    <label>API Key</label>
-    <input id="s-api-key" type="password" placeholder="sk-...">
-  </div>
-  <div class="setting-group">
-    <label>模型名称</label>
-    <input id="s-model" placeholder="Qwen/Qwen2-VL-7B-Instruct">
-    <p class="hint">需要支持图片识别的模型。硅基流动推荐：Qwen/Qwen2-VL-7B-Instruct</p>
+    <label>快速配置（粘贴4行）</label>
+    <textarea id="s-paste" rows="5" placeholder="第1行：API Key&#10;第2行：模型名称&#10;第3行：GitHub Token&#10;第4行：Gist ID" style="width:100%;padding:14px;border:2px solid var(--border);border-radius:12px;font-size:14px;background:var(--surface);color:var(--text);outline:none;resize:none;font-family:inherit;transition:border-color .2s;" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+    <button class="btn-primary" style="margin-top:10px" onclick="parsePaste()">解析并填入</button>
   </div>
 
-  <div style="height:1px;background:var(--border);margin:28px 0"></div>
+  <div style="height:1px;background:var(--border);margin:24px 0"></div>
 
-  <div class="setting-group">
-    <label>GitHub Personal Access Token</label>
-    <input id="s-gh-token" type="password" placeholder="ghp_...">
-    <p class="hint">在 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) 中创建，勾选 gist 权限即可</p>
+  <div style="cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:14px" onclick="toggleDetails()">
+    <svg id="details-arrow" viewBox="0 0 24 24" fill="none" stroke="var(--text-sec)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+    <span style="font-size:14px;color:var(--text-sec);font-weight:500">逐项查看与修改</span>
   </div>
-  <div class="setting-group">
-    <label>Gist ID</label>
-    <input id="s-gist-id" placeholder="如 a1b2c3d4e5f6...">
-    <p class="hint">在 gist.github.com 创建一个 Gist（内容随意），创建后浏览器地址栏最后一段即为 Gist ID</p>
+
+  <div id="settings-details" style="display:none">
+    <div class="setting-group">
+      <label>API Key</label>
+      <input id="s-api-key" type="password" placeholder="sk-...">
+    </div>
+    <div class="setting-group">
+      <label>模型名称</label>
+      <input id="s-model" placeholder="Qwen/Qwen2-VL-7B-Instruct">
+    </div>
+    <div class="setting-group">
+      <label>GitHub Token</label>
+      <input id="s-gh-token" type="password" placeholder="ghp_...">
+    </div>
+    <div class="setting-group">
+      <label>Gist ID</label>
+      <input id="s-gist-id" placeholder="a1b2c3d4e5f6...">
+    </div>
+    <div class="setting-group">
+      <label>API 地址</label>
+      <input id="s-api-url" placeholder="https://api.siliconflow.cn/v1">
+      <p class="hint">默认硅基流动，一般不需要改</p>
+    </div>
   </div>
 
   <button class="btn-primary" onclick="saveSettings()">保存设置</button>
@@ -493,6 +502,36 @@ function getSettings() {
     ghToken: localStorage.getItem('ocr_ghToken') || '',
     gistId: localStorage.getItem('ocr_gistId') || ''
   };
+}
+
+function parsePaste() {
+  const raw = document.getElementById('s-paste').value.trim();
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
+  if (lines.length < 4) {
+    toast('需要4行：API Key、模型、GitHub Token、Gist ID');
+    return;
+  }
+  document.getElementById('s-api-key').value = lines[0];
+  document.getElementById('s-model').value = lines[1];
+  document.getElementById('s-gh-token').value = lines[2];
+  document.getElementById('s-gist-id').value = lines[3];
+  document.getElementById('s-paste').value = '';
+  // Show details so user can verify
+  document.getElementById('settings-details').style.display = 'block';
+  document.getElementById('details-arrow').style.transform = 'rotate(90deg)';
+  toast('已解析，请确认后点保存');
+}
+
+function toggleDetails() {
+  const el = document.getElementById('settings-details');
+  const arrow = document.getElementById('details-arrow');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    arrow.style.transform = 'rotate(90deg)';
+  } else {
+    el.style.display = 'none';
+    arrow.style.transform = '';
+  }
 }
 
 function saveSettings() {
