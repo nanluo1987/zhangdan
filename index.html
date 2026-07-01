@@ -264,10 +264,11 @@ input[type="file"] { display:none; }
   <div id="result-area" style="display:none">
     <p class="result-label">识别结果：</p>
     <div class="result-box"><pre id="result-pre"></pre></div>
-    <div class="btn-row" style="margin-top:14px">
-      <button class="btn-primary" onclick="saveCurrentResult()">保存结果</button>
+    <button class="btn-primary" style="margin-top:14px" onclick="sendCurrentToPC()">发送到电脑</button>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn-outline" onclick="saveCurrentResult()">保存结果</button>
+      <button class="btn-outline" onclick="clearAndRetry()">清除，重新选图</button>
     </div>
-    <button class="btn-outline" onclick="clearAndRetry()">清除，重新选图</button>
   </div>
 </div>
 
@@ -394,7 +395,7 @@ const APP_CONFIGS = {
 
 要求：
 - 金额四舍五入到整数，保留正负号（支出为负数，收入为正数）
-- 按类别排序（相同类别的放在一起）
+- 按图片中的原始顺序输出，不要排序
 - 只输出JSON，不要任何其他文字、不要markdown代码块标记
 - 格式：{"items":[{"category":"转账支出","counterparty":"张三","amount":-234}]}`,
     format(data) {
@@ -414,7 +415,7 @@ const APP_CONFIGS = {
 
 要求：
 - 金额四舍五入到整数，保留正负号
-- 按类别排序
+- 按图片中的原始顺序输出，不要排序
 - 类别截图中显示不全的，按截图显示输出即可
 - 只输出JSON，不要任何其他文字、不要markdown代码块标记
 - 如果过滤后没有剩余项目，输出 {"items":[]}
@@ -738,6 +739,42 @@ async function copyMerged() {
     toast('已复制到剪贴板');
   } catch {
     toast('复制失败，请长按文本手动复制');
+  }
+}
+
+async function sendCurrentToPC() {
+  if (!currentResult || currentResult.startsWith('#')) {
+    toast('没有有效结果可发送');
+    return;
+  }
+  const s = getSettings();
+  if (!s.ghToken || !s.gistId) {
+    toast('请先在设置中配置 GitHub Token 和 Gist ID');
+    return;
+  }
+
+  const config = APP_CONFIGS[currentApp];
+  const header = '来源\t类别\t金额\t交易方';
+  const content = header + '\n' + currentResult;
+
+  try {
+    const resp = await fetch(`https://api.github.com/gists/${s.gistId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${s.ghToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github+json'
+      },
+      body: JSON.stringify({
+        files: {
+          'bill_result.tsv': { content }
+        }
+      })
+    });
+    if (!resp.ok) throw new Error(`GitHub API 错误 (${resp.status})`);
+    toast(`${config.name}结果已发送到电脑`);
+  } catch (err) {
+    toast('发送失败: ' + err.message);
   }
 }
 
